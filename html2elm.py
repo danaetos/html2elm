@@ -4,6 +4,7 @@ import sys
 import argparse
 
 Match = namedtuple('Match',['name','start','type'])
+singletons = set(['area','base','br','col','command','embed','hr','img','input','keygen','link','meta','param','source','track','wbr'])
 
 class Node(object):
 
@@ -39,7 +40,6 @@ class Node(object):
 		if self.attributes is not None:
 			for (k,v) in self.attributes.items():
 				print('\t'*n + '{}: {}'.format(k,', '.join(v)))
-
 		for c in self.children:
 			c.print(n+1)
 
@@ -53,13 +53,19 @@ def parseAttributes(text):
 		attrs[attr_name] = attr_values
 	return attrs
 
+def format_attr(k,vs):
+	result = ''
+	if k == 'class':
+		tuples = ','.join( '("' + v + '",True)' for v in vs)
+		result += 'classList [' + tuples + ']'
+	else:
+		result += 'attribute ' + '"' + k + '" "' + ' '.join(vs) + '"'
+	return result
+
 def format_attrs(attributes):
 	result = ''
 	if attributes is not None: 
-		for (k,vs) in attributes.items():
-			if k == 'class':
-				tuples = ','.join( '("' + v + '",True)' for v in vs)
-				result += 'classList [' + tuples + ']'
+		result += ','.join( format_attr(k,vs) for (k,vs) in attributes.items() )
 	return result 
 
 def format_elm(node):
@@ -70,20 +76,17 @@ def format_elm(node):
 	return text
 
 def parse_tree(html):
-	pattern_open = r'<[a-z,A-Z]*[\s|>]'	# [^>]*>'
+	pattern_open = r'<[a-z,A-Z]*[\s|>]'
 	pattern_close = r'</[a-z,A-Z]*>'
 	matches_open = [ Match(html[m.start(0)+1:m.end(0)-1],m.start(0),'open') for m in re.finditer(pattern_open, html)]
 	matches_close = [ Match(html[m.start(0)+2:m.end(0)-1],m.start(0),'close') for m in re.finditer(pattern_close, html)]
 	ms = sorted(matches_open + matches_close, key = lambda tup: tup.start)
 
 	for i,m in enumerate(ms):
-		if m.type == 'open':
-			attr_string = html[m.start:html.find('>',m.start)]
-			attributes = parseAttributes(attr_string)
-
+			
 		if i==0:
 			current_node = Node(ms[0].name,start=ms[0].start)
-			current_node.setAttributes(attributes)
+			current_node.setAttributes(parseAttributes(html[m.start:html.find('>',m.start)]))
 			continue
 
 		text_start = html.find('>',ms[i-1].start)+1
@@ -95,10 +98,14 @@ def parse_tree(html):
 				child = Node('text',start=text_start,text=text)
 				current_node.addChild(child)
 			child = Node(m.name,start=m.start)
-			child.setAttributes(attributes)
+			child.setAttributes(parseAttributes(html[m.start:html.find('>',m.start)]))
 			child.parent = current_node
 			current_node.addChild(child)
 			current_node = child
+
+			if m.name in singletons:
+				if current_node.parent is not None:
+					current_node = current_node.parent	
 
 		if m.type == 'close':
 			if text:
@@ -108,17 +115,10 @@ def parse_tree(html):
 				current_node = current_node.parent
 	return current_node
 
-
-def parse(html):
-	root = parse_tree(html)
-	elm = format_elm(root)
-	print(elm)
-
 def main():
 	parser = argparse.ArgumentParser(description = 'convert html snippets to elm functions')
 	parser.add_argument('--t',type=str,help='input html')
-	parser.add_argument('--i',type=str,help='input file')
-	parser.add_argument('--o',type=str,help='output file [printed to console if omitted]')
+	parser.add_argument('--i',type=str,help='input file')	
 	args = parser.parse_args()
 	
 	if args.t == None and args.i == None:
@@ -130,11 +130,7 @@ def main():
 	else:
 		html = open(args.i,'r').read()
 
-	parse(html)
-	
-
-
-
+	print(format_elm(parse_tree(html)))
 
 if __name__ == '__main__':
 	main()
