@@ -5,6 +5,7 @@ import argparse
 
 Match = namedtuple('Match',['name','start','type'])
 singletons = set(['area','base','br','col','command','embed','hr','img','input','keygen','link','meta','param','source','track','wbr'])
+known_attributes = set(['placeholder','id','src','title','href'])
 
 class Node(object):
 
@@ -56,8 +57,13 @@ def parseAttributes(text):
 def format_attr(k,vs):
 	result = ''
 	if k == 'class':
-		tuples = ','.join( '("' + v + '",True)' for v in vs)
-		result += 'classList [' + tuples + ']'
+		if len(vs) > 1:
+			tuples = ','.join( '("' + v + '",True)' for v in vs)
+			result += 'classList [' + tuples + ']'
+		else:
+			result += 'class "' + vs[0] + '"'
+	elif k in known_attributes:
+		result += k + ' "' + ' '.join(vs) + '"'
 	else:
 		result += 'attribute ' + '"' + k + '" "' + ' '.join(vs) + '"'
 	return result
@@ -76,8 +82,8 @@ def format_elm(node):
 	return text
 
 def parse_tree(html):
-	pattern_open = r'<[a-z,A-Z]*[\s|>]'
-	pattern_close = r'</[a-z,A-Z]*>'
+	pattern_open = r'<[a-z,A-Z,0-9]*[\s|>]'
+	pattern_close = r'</[a-z,A-Z,0-9]*>'
 	matches_open = [ Match(html[m.start(0)+1:m.end(0)-1],m.start(0),'open') for m in re.finditer(pattern_open, html)]
 	matches_close = [ Match(html[m.start(0)+2:m.end(0)-1],m.start(0),'close') for m in re.finditer(pattern_close, html)]
 	ms = sorted(matches_open + matches_close, key = lambda tup: tup.start)
